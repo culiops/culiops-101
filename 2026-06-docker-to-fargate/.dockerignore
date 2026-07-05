@@ -1,0 +1,9 @@
+# Keep the build context (and final image) small and secret-free.
+node_modules
+npm-debug.log
+.git
+.gitignore
+*.md
+.env
+.env.*
+.DS_Store
