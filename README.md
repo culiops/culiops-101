@@ -8,6 +8,7 @@ own folder, named by release month and topic — clone it, run it, break it, lea
 | Folder | Topic | Video |
 |---|---|---|
 | [`2026-06-docker-to-fargate`](2026-06-docker-to-fargate) | Ship a Docker container to real production on AWS ECS Fargate | CuliOps on YouTube |
+| [`2026-07-github-actions-deploy-fargate`](2026-07-github-actions-deploy-fargate) | Auto-deploy to ECS Fargate with GitHub Actions + OIDC — no stored AWS keys | CuliOps on YouTube |
 
 ## Usage
 
