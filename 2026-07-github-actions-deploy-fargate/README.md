@@ -27,9 +27,13 @@ GH_ORG=<you> GH_REPO=<repo> ./iam/setup-oidc.sh   # OIDC provider + branch-scope
 # It prints the deploy role ARN. Set it as a repo secret:
 gh secret set AWS_DEPLOY_ROLE_ARN --body '<role-arn>' --repo <you>/<repo>
 
-# Put the workflow at YOUR repo root, then push:
-mkdir -p .github/workflows && cp .github/workflows/deploy.yml <your-repo>/.github/workflows/
-git commit -am "ship it" && git push origin main       # → the pipeline deploys
+# The workflow builds THIS sample app, so copy the app + Dockerfile + workflow into your
+# repo (not just the workflow — `docker build .` needs the Dockerfile at the repo root):
+cp -r Dockerfile app .github <your-repo>/
+cd <your-repo> && git add Dockerfile app .github
+git commit -m "ship it" && git push origin main        # → the pipeline builds + deploys
+# (Deploying your OWN app instead? Then you only need .github/workflows/deploy.yml — your
+#  repo already has its Dockerfile + source. Adjust CONTAINER_NAME/ECR_REPOSITORY in the workflow.)
 
 # --- Clean up (required — Fargate bills by the hour) ----------------------
 ./cleanup.sh
