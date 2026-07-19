@@ -1,0 +1,7 @@
+# Never commit real backups, secrets, or the local passphrase.
+# All dump artifacts are written into backups/, so that one line covers them —
+# do NOT add loose *.sql / *.dump globs (they would also ignore sql/seed.sql, the
+# source file the lab needs to run).
+.env
+.gpgpass
+backups/

@@ -1,0 +1,19 @@
+# CuliOps lab — production backup drill (PostgreSQL 18)
+# Local-only. No cloud, no cost. `make up` then `make drill`.
+services:
+  db:
+    image: postgres:18            # pinned to the current stable line (18.x, verified 2026-07)
+    container_name: culiops-backup-lab-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-culiops}
+      POSTGRES_DB: ${POSTGRES_DB:-shop}
+      # Local throwaway lab only — trust auth so the Makefile works with no password.
+      # NEVER use trust auth in production.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "${HOST_PORT:-55432}:5432"   # non-default host port to avoid clashing with a local Postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-culiops} -d ${POSTGRES_DB:-shop}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
