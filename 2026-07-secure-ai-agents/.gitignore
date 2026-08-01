@@ -1,0 +1,12 @@
+# Local settings copies (Claude Code writes these)
+settings.local.json
+
+# Anything that could carry a real credential
+.env
+.env.*
+*.pem
+*.key
+
+# Test run logs
+test-logs/
+crash.log
