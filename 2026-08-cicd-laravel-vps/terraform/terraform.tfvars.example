@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars and fill in. NEVER commit real secrets.
+
+aws_region    = "ap-southeast-1"
+instance_type = "t3.micro"
+
+# The DEDICATED deploy PUBLIC key (ssh-keygen -t ed25519 -f deploy_key -C deploy).
+# The matching PRIVATE key (deploy_key) becomes the GitHub secret DEPLOY_SSH_KEY.
+deploy_public_key = "ssh-ed25519 AAAA... deploy"
+
+# Lab DB password (not a real secret).
+db_password = "lab-only-change-me"
+
+# Optional: lock SSH to your IP for anything beyond a quick lab.
+# ssh_ingress_cidr = "203.0.113.4/32"
+
+# GHCR repo CI pushes to / VPS pulls (lowercase). e.g. ghcr.io/you/deploy-laravel-vps
+image_repo = "ghcr.io/your-github/deploy-laravel-vps"

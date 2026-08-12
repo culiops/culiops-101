@@ -1,0 +1,23 @@
+# Keep the build context (and the image) small and deterministic. vendor/ and
+# node_modules are rebuilt in the builder stages; never ship the host's copies.
+.git
+.github
+node_modules
+vendor
+# Discovered caches are build-machine artifacts baked with DEV deps — excluding them
+# lets Laravel rebuild the package manifest at runtime against the --no-dev vendor
+# (else you get "Class Laravel\Pail\PailServiceProvider not found" in production).
+bootstrap/cache/*
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+.env
+.env.*
+!.env.example
+terraform
+*.md
+docker-compose*.yml
+deploy.sh
+Dockerfile
+.dockerignore

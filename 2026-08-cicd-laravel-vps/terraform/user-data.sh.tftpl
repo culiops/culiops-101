@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# cloud-init for a Docker VPS. This box installs ONLY Docker — no PHP, no nginx, no
+# ondrej PPA. Everything the app needs ships inside the image (that's the whole point
+# of the Docker approach, and why this runs identically on any Ubuntu/Debian VPS).
+set -euxo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# ── deploy user + SSH key FIRST (reachable even if a later step fails) ─────────
+# ── 2 GB swap — cheap insurance for a small VPS running MySQL-in-a-container ───
+# A Dockerized stack (MySQL + Redis + nginx + PHP workers) spikes memory on first
+# boot; without swap a 1–2 GB box can OOM and lock up. This is a real best-practice
+# for budget VPSes, not a lab hack.
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+id deploy >/dev/null 2>&1 || useradd -m -s /bin/bash deploy
+install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+echo "${deploy_public_key}" > /home/deploy/.ssh/authorized_keys
+chown deploy:deploy /home/deploy/.ssh/authorized_keys
+chmod 600 /home/deploy/.ssh/authorized_keys
+
+# ── Docker Engine + Compose plugin (official convenience script) ──────────────
+curl -fsSL https://get.docker.com | sh
+usermod -aG docker deploy                 # deploy runs docker WITHOUT sudo (docker group)
+systemctl enable --now docker
+
+# ── the compose stack lives in /home/deploy/app (CI only pulls + up here) ─────
+install -d -o deploy -g deploy /home/deploy/app /home/deploy/app/nginx
+cat > /home/deploy/app/docker-compose.yml <<'COMPOSE'
+${compose_yml}
+COMPOSE
+cat > /home/deploy/app/nginx/app.conf <<'NGINX'
+${nginx_conf}
+NGINX
+cat > /home/deploy/app/deploy.sh <<'DEPLOY'
+${deploy_sh}
+DEPLOY
+
+# ── runtime .env (secrets injected here, never in the image or git) ───────────
+APP_KEY="base64:$(openssl rand -base64 32)"
+cat > /home/deploy/app/.env <<ENV
+IMAGE_REPO=${image_repo}
+APP_NAME="CuliOps Deploy Lab"
+APP_ENV=production
+APP_KEY=$${APP_KEY}
+APP_DEBUG=false
+APP_URL=http://localhost
+APP_VERSION=bootstrap
+STRIPE_SECRET=sk_test_lab_do_not_use
+DB_CONNECTION=mysql
+DB_HOST=mysql
+DB_PORT=3306
+DB_DATABASE=laravel
+DB_USERNAME=laravel
+DB_PASSWORD=${db_password}
+REDIS_HOST=redis
+REDIS_PORT=6379
+QUEUE_CONNECTION=redis
+CACHE_STORE=redis
+SESSION_DRIVER=redis
+LOG_CHANNEL=stderr
+ENV
+
+chown -R deploy:deploy /home/deploy/app
+chmod 600 /home/deploy/app/.env
+chmod 755 /home/deploy/app/deploy.sh
+
+echo "docker VPS ready — CI can now pull & deploy" > /var/log/culiops-bootstrap.done

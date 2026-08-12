@@ -1,0 +1,74 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+# Never run two deploys at once; queue the next push instead of dropping it.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      # Every action pinned to a commit SHA, not a moving tag (tj-actions,
+      # CVE-2025-30066: an attacker moved a tag onto malicious code). The comment
+      # is the human-readable version.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1        # v7.0.1
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # 2.37.2
+        with: { php-version: '8.4' }
+      - run: composer install --no-interaction --prefer-dist
+      - run: cp .env.example .env && php artisan key:generate
+      - run: php artisan test          # red = stop; nothing gets built or deployed
+
+  build:
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write                  # lets GITHUB_TOKEN push to GHCR — no PAT needed
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1        # v7.0.1
+      # buildx with the docker-container driver — required for the gha build cache
+      # (the runner's default docker driver can't export cache).
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f      # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          push: true
+          # Immutable tag = the commit SHA. This is what makes rollback possible
+          # (deploy.sh can re-pull the previous SHA). Never :latest.
+          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read                    # GITHUB_TOKEN can then PULL the image we pushed
+    steps:
+      # The VPS only PULLS the image and runs it. We hand the box a short-lived
+      # GITHUB_TOKEN to log into GHCR (works even if the package is private — no manual
+      # "make public" step). deploy.sh then does: pull → migrate once → up --wait
+      # (healthcheck-gated) → rollback-by-tag on failure.
+      - uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2       # v1.2.5
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER:  ${{ github.actor }}
+        with:
+          host:     ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}    # NOT root; in the `docker` group
+          key:      ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 15m                  # first deploy pulls images + inits MySQL
+          envs:     GHCR_TOKEN,GHCR_USER
+          script: |
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            TAG=${{ github.sha }} /home/deploy/app/deploy.sh
