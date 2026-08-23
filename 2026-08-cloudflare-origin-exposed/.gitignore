@@ -1,0 +1,13 @@
+# Secrets & local config
+.env
+terraform/terraform.tfvars
+
+# Terraform state & working files
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfplan
+terraform/crash.log
+
+# local test-run logs
+test-logs/

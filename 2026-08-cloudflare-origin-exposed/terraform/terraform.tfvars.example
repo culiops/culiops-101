@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and fill in. NEVER commit terraform.tfvars.
+#
+# The Cloudflare API token is NOT set here — the provider reads it from the
+# CLOUDFLARE_API_TOKEN environment variable (see ../.env.example).
+
+# Your Cloudflare zone ID (zone Overview page, right sidebar).
+# MUST be a throwaway / sandbox zone — this lab intentionally exposes an origin.
+cloudflare_zone_id = "0000000000000000000000000000000000"
+
+# A subdomain of that zone to create for the origin.
+origin_hostname = "cf-origin.culilab.dev"
+
+# The state switch. Start at "none"; advance to "ip_allowlist" then "aop".
+protection = "none"
+
+# --- Optional ---
+# aws_region       = "ap-southeast-1"
+# instance_type    = "t3.micro"
+# key_name         = "my-ec2-keypair"   # existing EC2 key pair, for SSH inspection
+# ssh_ingress_cidr = "203.0.113.10/32"  # YOUR IP/32; leave unset to disable SSH

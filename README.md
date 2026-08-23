@@ -12,6 +12,7 @@ own folder, named by release month and topic — clone it, run it, break it, lea
 | [`2026-07-backup-restore-drill`](2026-07-backup-restore-drill) | A backup you never restored is not a backup — restore drill, compression, encryption at rest (local PostgreSQL) | CuliOps on YouTube |
 | [`2026-07-secure-ai-agents`](2026-07-secure-ai-agents) | Three guardrails to turn on before an AI coding agent runs commands on your machine — no cloud account needed | CuliOps on YouTube |
 | [`2026-08-cicd-laravel-vps`](2026-08-cicd-laravel-vps) | Deploy Laravel with Docker to a VPS via GitHub Actions + GHCR — and the four ways `compose up` succeeds while the app is broken | CuliOps on YouTube |
+| [`2026-08-cloudflare-origin-exposed`](2026-08-cloudflare-origin-exposed) | You enabled Cloudflare but your origin still answers direct-to-IP requests — check it in 30s, then lock it with an IP allowlist and Authenticated Origin Pulls (mTLS) | CuliOps on YouTube |
 
 ## Usage
 
