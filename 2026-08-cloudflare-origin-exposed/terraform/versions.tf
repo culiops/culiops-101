@@ -6,14 +6,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "~> 5.0" # v5 renamed many resources vs v4 (cloudflare_dns_record, etc.)
-    }
-    http = {
-      source  = "hashicorp/http"
-      version = "~> 3.4"
-    }
   }
 
   # ─── Remote State (S3 Backend) ─────────────────────────────────────────────
@@ -41,11 +33,8 @@ provider "aws" {
   }
 }
 
-# The Cloudflare provider reads the API token from the CLOUDFLARE_API_TOKEN
-# environment variable automatically — no secret ever lands in a .tf/.tfvars file.
-# The token needs, on the target zone, only two permissions:
-#   DNS:Edit            (the proxied A record)
-#   Zone Settings:Edit  (SSL mode + Global AOP via the tls_client_auth setting)
-# Global AOP does NOT need "SSL and Certificates:Edit" — that is only for zone-level /
-# per-hostname AOP, where you upload your own certificate.
-provider "cloudflare" {}
+# NOTE — no Cloudflare provider here on purpose.
+# In this lab Terraform only stands up the AWS "stage" (the exposed origin). Everything on the
+# Cloudflare side — the proxied DNS record, SSL mode, and Authenticated Origin Pulls — is done
+# BY HAND during the demo (dashboard or `curl` to the Cloudflare API), because *watching those
+# actions happen* is the lesson. Teardown of those by-hand artifacts lives in `cleanup.sh`.

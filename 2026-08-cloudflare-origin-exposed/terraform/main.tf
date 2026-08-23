@@ -1,13 +1,13 @@
 # main.tf — Cloudflare Origin Lockdown lab
 #
-# Provisions a deliberately-exposed origin behind Cloudflare, then locks it down
-# in two layers, all driven by var.protection ("none" -> "ip_allowlist" -> "aop").
+# Terraform's job here is ONLY to stand up the "stage": a deliberately-exposed origin on AWS
+# (VPC + public EC2 running plain nginx, open to the whole internet). That is the mistake the
+# video opens with.
 #
-# Resources:
-#   AWS         — minimal VPC + public subnet + IGW, one EC2 origin (nginx), EIP, security group
-#   Cloudflare  — proxied A record, SSL mode = Full, Authenticated Origin Pulls (global) toggle
-#
-# Teardown: `terraform destroy` (reverts the A record, the AOP toggle, and the SSL setting too).
+# Everything after that — putting Cloudflare in front, and the two locks (Layer 1 IP allowlist,
+# Layer 2 Authenticated Origin Pulls) — is performed BY HAND in the demo, because watching each
+# lock click into place is the lesson. See the README. Teardown = `terraform destroy` for this
+# AWS stage, plus `cleanup.sh` for the by-hand Cloudflare zone artifacts.
 
 # ─── Data sources ─────────────────────────────────────────────────────────────
 
@@ -29,23 +29,10 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-# Cloudflare's published IPv4 ranges — the exact list the video curls by hand.
-# Used to build the Layer 1 allowlist. (https://www.cloudflare.com/ips-v4)
-data "http" "cloudflare_ips_v4" {
-  url = "https://www.cloudflare.com/ips-v4"
-}
-
 # ─── Locals ───────────────────────────────────────────────────────────────────
 
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
-
-  cloudflare_ipv4 = toset(compact(split("\n", data.http.cloudflare_ips_v4.response_body)))
-
-  # Layer 1 restricts 80/443 to Cloudflare only; every other state is wide open
-  # (state "none" = the mistake; state "aop" reopens the SG so the mTLS 403 is
-  # reachable and demonstrable — the lock has moved to the TLS layer, not the network).
-  web_ingress_cidrs = var.protection == "ip_allowlist" ? local.cloudflare_ipv4 : toset(["0.0.0.0/0"])
 }
 
 # ─── Network (self-contained — the sandbox account has no default VPC) ─────────
@@ -84,43 +71,46 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# ─── Security group — the network-layer lock (Layer 1) ─────────────────────────
+# ─── Security group — the STAGE opens it to the world (the mistake) ────────────
+#
+# Terraform ships the origin already wide open on 80/443 (0.0.0.0/0) — that is the exposed
+# starting point, not a lesson. Layer 1 in the demo is a BY-HAND security-group change
+# (`aws ec2 revoke/authorize-security-group-ingress`) that swaps this to Cloudflare's ranges,
+# so the viewer watches the network lock happen. `terraform destroy` deletes this SG and every
+# rule on it — hand-added or not — so the manual edits need no separate cleanup.
 
 resource "aws_security_group" "origin" {
   name        = "${local.name_prefix}-origin"
-  description = "Origin web server - ingress driven by protection var"
+  description = "Origin web server - starts open to the world; Layer 1 tightens it by hand"
   vpc_id      = aws_vpc.lab.id
   tags        = { Name = "${local.name_prefix}-origin" }
 }
 
 resource "aws_vpc_security_group_ingress_rule" "https" {
-  for_each          = local.web_ingress_cidrs
   security_group_id = aws_security_group.origin.id
   ip_protocol       = "tcp"
   from_port         = 443
   to_port           = 443
-  cidr_ipv4         = each.value
-  description       = "HTTPS from ${each.value}"
+  cidr_ipv4         = "0.0.0.0/0"
+  description       = "HTTPS open to the world (the mistake; Layer 1 replaces this by hand)"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "http" {
-  for_each          = local.web_ingress_cidrs
   security_group_id = aws_security_group.origin.id
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
-  cidr_ipv4         = each.value
-  description       = "HTTP from ${each.value}"
+  cidr_ipv4         = "0.0.0.0/0"
+  description       = "HTTP open to the world"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "ssh" {
-  count             = var.ssh_ingress_cidr != "" ? 1 : 0
   security_group_id = aws_security_group.origin.id
   ip_protocol       = "tcp"
   from_port         = 22
   to_port           = 22
   cidr_ipv4         = var.ssh_ingress_cidr
-  description       = "SSH for inspection"
+  description       = "SSH from your IP - required for the Layer 2 (mTLS) step"
 }
 
 resource "aws_vpc_security_group_egress_rule" "all" {
@@ -137,16 +127,14 @@ resource "aws_instance" "origin" {
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.origin.id]
-  key_name               = var.key_name != "" ? var.key_name : null
+  key_name               = var.key_name
 
-  # user_data depends ONLY on whether mTLS is on, so switching none <-> ip_allowlist
-  # (a pure security-group change) does NOT rebuild the box — only enabling AOP, which
-  # genuinely changes the nginx config, replaces the instance (immutable infra).
+  # Plain nginx, always. The 443 server block includes an (initially empty) mTLS snippet
+  # directory, so Layer 2 is just "drop one file + reload" over SSH — no in-place editing of
+  # the main config on camera. See templates/cloud-init.sh.tftpl.
   user_data = templatefile("${path.module}/templates/cloud-init.sh.tftpl", {
-    aop_enabled     = var.protection == "aop"
     origin_hostname = var.origin_hostname
   })
-  user_data_replace_on_change = true
 
   root_block_device {
     volume_size = 8
@@ -164,39 +152,4 @@ resource "aws_eip" "origin" {
 resource "aws_eip_association" "origin" {
   instance_id   = aws_instance.origin.id
   allocation_id = aws_eip.origin.id
-}
-
-# ─── Cloudflare — the edge in front of the origin ─────────────────────────────
-
-# Proxied A record: the orange cloud. Traffic to the hostname hits Cloudflare;
-# the origin's real IP is the EIP (which is exactly what leaks and gets hit directly).
-resource "cloudflare_dns_record" "origin" {
-  zone_id = var.cloudflare_zone_id
-  name    = var.origin_hostname
-  type    = "A"
-  content = aws_eip.origin.public_ip
-  ttl     = 1 # 1 = automatic; required while proxied
-  proxied = true
-  comment = "cloudflare-origin-lockdown lab - safe to delete"
-}
-
-# AOP precondition: SSL/TLS mode must be Full or Full (strict).
-resource "cloudflare_zone_setting" "ssl" {
-  zone_id    = var.cloudflare_zone_id
-  setting_id = "ssl"
-  value      = "full"
-}
-
-# Layer 2, Cloudflare side: GLOBAL Authenticated Origin Pulls. This makes Cloudflare
-# present its shared origin-pull certificate (the CA the origin trusts, fetched in
-# cloud-init) on connections to every proxied host in the zone. Enabled only in "aop".
-#
-# NOTE: Global AOP is the `tls_client_auth` ZONE SETTING (uses Cloudflare's shared cert)
-# — NOT the `cloudflare_authenticated_origin_pulls_settings` resource, which is ZONE-LEVEL
-# AOP and requires you to upload your OWN certificate. Global AOP therefore needs only
-# Zone Settings:Edit on the token, not SSL and Certificates:Edit.
-resource "cloudflare_zone_setting" "aop" {
-  zone_id    = var.cloudflare_zone_id
-  setting_id = "tls_client_auth"
-  value      = var.protection == "aop" ? "on" : "off"
 }

@@ -21,53 +21,37 @@ variable "environment" {
   default     = "dev"
 }
 
-# ─── The lab's core state switch ──────────────────────────────────────────────
-variable "protection" {
-  description = <<-EOT
-    Which lock is applied to the origin. Drive the whole lab by re-applying with
-    a new value and re-running the 30-second check after each:
-
-      "none"          THE MISTAKE — SG open 0.0.0.0/0:443, plain nginx.
-                      Direct hit on the origin IP returns 200. Origin is exposed.
-      "ip_allowlist"  LAYER 1 — SG 443 restricted to Cloudflare's IP ranges only.
-                      A direct hit from anywhere else times out (network-layer drop).
-                      Weakness: the CF IP list changes; a stale allowlist blocks real traffic.
-      "aop"           LAYER 2 — Authenticated Origin Pulls (mTLS). SG is reopened so the
-                      origin is reachable, but nginx rejects any request that does NOT carry
-                      Cloudflare's client certificate (HTTP 403). No IP list to keep fresh.
-  EOT
-  type        = string
-  default     = "none"
-
-  validation {
-    condition     = contains(["none", "ip_allowlist", "aop"], var.protection)
-    error_message = "protection must be one of: none, ip_allowlist, aop."
-  }
-}
-
-# ─── Cloudflare ───────────────────────────────────────────────────────────────
-variable "cloudflare_zone_id" {
-  description = "Zone ID of your Cloudflare zone (Overview page, right sidebar). This lab MUST run on a throwaway/sandbox zone — it intentionally exposes an origin. Never a production zone."
-  type        = string
-}
-
+# ─── Origin identity ──────────────────────────────────────────────────────────
+# This is NOT a Terraform-managed Cloudflare resource — the DNS record is created BY HAND in
+# the demo. Terraform only uses this value to name the origin's self-signed cert (CN) and the
+# nginx server_name, and to pre-fill the copy-paste check commands in the outputs.
 variable "origin_hostname" {
-  description = "Fully-qualified hostname to create for the origin (a subdomain of your zone), proxied through Cloudflare."
+  description = "Fully-qualified hostname you will point at the origin (a subdomain of your throwaway Cloudflare zone). MUST be a sandbox zone — this lab intentionally exposes an origin. Never a production zone."
   type        = string
   default     = "cf-origin.culilab.dev"
 }
 
-# ─── Access / sizing ──────────────────────────────────────────────────────────
-variable "ssh_ingress_cidr" {
-  description = "CIDR allowed to SSH (port 22) into the origin box for inspection. Set to your own IP/32. Empty string disables SSH ingress entirely."
+# ─── SSH — REQUIRED for Layer 2 ───────────────────────────────────────────────
+# Layer 2 (Authenticated Origin Pulls) is applied by SSHing into the box and adding an nginx
+# mTLS snippet on camera. Both of these must be set, or you cannot reach the box to do it.
+variable "key_name" {
+  description = "Name of an existing EC2 key pair for SSH access. REQUIRED — the Layer 2 step SSHes into the origin to enable mTLS."
   type        = string
-  default     = ""
+
+  validation {
+    condition     = length(var.key_name) > 0
+    error_message = "key_name is required: Layer 2 SSHes into the origin. Create/import an EC2 key pair first."
+  }
 }
 
-variable "key_name" {
-  description = "Name of an existing EC2 key pair for SSH access (optional). Leave empty to skip — the lab works without SSH."
+variable "ssh_ingress_cidr" {
+  description = "CIDR allowed to SSH (port 22) into the origin. Set to YOUR public IP as /32. REQUIRED for the Layer 2 step."
   type        = string
-  default     = ""
+
+  validation {
+    condition     = can(cidrhost(var.ssh_ingress_cidr, 0))
+    error_message = "ssh_ingress_cidr must be a valid CIDR, e.g. 203.0.113.10/32 (your public IP)."
+  }
 }
 
 variable "instance_type" {

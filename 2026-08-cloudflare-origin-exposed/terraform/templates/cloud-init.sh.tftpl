@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # cloud-init bootstrap — Cloudflare Origin Lockdown lab (rendered by Terraform).
-# mTLS (Authenticated Origin Pulls) enabled: ${aop_enabled}
+#
+# Stands up a PLAIN, exposed nginx origin — no locks. Both locks are applied by hand in the demo:
+#   Layer 1 (IP allowlist) = a security-group change, from your laptop.
+#   Layer 2 (mTLS / AOP)    = drop one snippet into /etc/nginx/mtls/ over SSH, then reload.
+# The 443 server block already `include`s that (initially empty) directory, so enabling Layer 2
+# on camera is one file + one reload — never an in-place edit of this config.
 set -Eeuo pipefail
 export HOME=/root
 export DEBIAN_FRONTEND=noninteractive
@@ -9,19 +14,21 @@ LOG=/var/log/lab-bootstrap.log
 exec > >(tee -a "$LOG") 2>&1
 trap 'echo "[bootstrap] FAILED at line $LINENO — see $LOG"; exit 1' ERR
 
-echo "[bootstrap] aop_enabled=${aop_enabled} host=${origin_hostname} start=$(date -u)"
+echo "[bootstrap] host=${origin_hostname} start=$(date -u)"
 
-# 1) Packages. Stock Ubuntu 24.04 LTS nginx — deliberately NOT a pinned nginx.org
-#    third-party repo (a documented way to brick bootstrap on a fresh LTS). The AOP
-#    directives below are stable across every nginx version, so the exact patch level
-#    buys nothing here.
+# 1) Packages. Stock Ubuntu 24.04 LTS nginx — deliberately NOT a pinned nginx.org third-party
+#    repo (a documented way to brick bootstrap on a fresh LTS). The mTLS directives added later
+#    are stable across every nginx version, so the exact patch level buys nothing here.
 apt-get update -y
 apt-get install -y nginx openssl curl ca-certificates
 
 install -d -m 0755 /etc/nginx/certs
+# The mTLS snippet directory: empty now (origin is exposed). The Layer 2 demo drops one .conf
+# file in here and reloads. A glob include over an empty dir is valid nginx — no snippet, no lock.
+install -d -m 0755 /etc/nginx/mtls
 
-# 2) Self-signed origin certificate. Cloudflare SSL mode "Full" accepts a self-signed
-#    origin cert (mode "Full (strict)" would not — that needs a real/Origin CA cert).
+# 2) Self-signed origin certificate. Cloudflare SSL mode "Full" accepts a self-signed origin cert
+#    (mode "Full (strict)" would not — that needs a real / Cloudflare Origin CA cert).
 if [ ! -f /etc/nginx/certs/origin.crt ]; then
   openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
     -keyout /etc/nginx/certs/origin.key \
@@ -29,17 +36,7 @@ if [ ! -f /etc/nginx/certs/origin.crt ]; then
     -subj "/CN=${origin_hostname}"
 fi
 
-%{ if aop_enabled ~}
-# 3) Global Authenticated Origin Pulls CA (mTLS only).
-#    This is the SHARED "authenticated origin-pull" CA that signs the client cert
-#    Cloudflare presents when GLOBAL AOP (the tls_client_auth zone setting) is on.
-#    The origin uses it to VERIFY that cert. It is NOT "Cloudflare Origin CA" (which
-#    issues server certs FOR your origin) — two different certificates.
-curl -fsS -o /etc/nginx/certs/cloudflare-origin-pull-ca.pem \
-  https://developers.cloudflare.com/ssl/static/authenticated_origin_pull_ca.pem
-%{ endif ~}
-
-# 4) nginx server block.
+# 3) nginx server block. Plain origin — answers anyone. The mTLS include is the only Layer 2 hook.
 cat > /etc/nginx/sites-available/default <<'NGINX'
 server {
     listen 80 default_server;
@@ -53,23 +50,17 @@ server {
 
     ssl_certificate     /etc/nginx/certs/origin.crt;
     ssl_certificate_key /etc/nginx/certs/origin.key;
-%{ if aop_enabled ~}
 
-    # Layer 2 — Authenticated Origin Pulls (mTLS).
-    # Accept the TLS handshake, then reject anything that does NOT carry Cloudflare's
-    # client certificate with a clear 403 (the exact code the 30-second check expects).
-    ssl_client_certificate /etc/nginx/certs/cloudflare-origin-pull-ca.pem;
-    ssl_verify_client      optional;
-    if ($ssl_client_verify != SUCCESS) { return 403; }
-%{ endif ~}
+    # Layer 2 hook — empty until the demo drops an mTLS snippet here (see README, Step 5).
+    include /etc/nginx/mtls/*.conf;
 
     location / { default_type text/plain; return 200 "origin reached over https\n"; }
 }
 NGINX
 
-# 5) Validate before reload so a bad config never silently takes nginx down.
+# 4) Validate before reload so a bad config never silently takes nginx down.
 nginx -t
 systemctl enable nginx
 systemctl restart nginx
 
-echo "[bootstrap] done — nginx serving (mtls=${aop_enabled}) at $(date -u)"
+echo "[bootstrap] done — plain exposed nginx serving at $(date -u)"

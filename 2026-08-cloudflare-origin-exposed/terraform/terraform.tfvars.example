@@ -1,20 +1,18 @@
 # Copy to terraform.tfvars and fill in. NEVER commit terraform.tfvars.
 #
-# The Cloudflare API token is NOT set here — the provider reads it from the
-# CLOUDFLARE_API_TOKEN environment variable (see ../.env.example).
+# Terraform only stands up the AWS "stage" (the exposed origin). The Cloudflare side is done
+# by hand in the demo, so there is NO Cloudflare token or zone id here — those live in ../.env
+# and are used by the `curl` steps in the README.
 
-# Your Cloudflare zone ID (zone Overview page, right sidebar).
-# MUST be a throwaway / sandbox zone — this lab intentionally exposes an origin.
-cloudflare_zone_id = "0000000000000000000000000000000000"
-
-# A subdomain of that zone to create for the origin.
+# A subdomain of your THROWAWAY / sandbox Cloudflare zone. This lab intentionally exposes an
+# origin — never a production zone. Terraform uses this only for the cert CN + check commands;
+# you create the actual proxied A record by hand.
 origin_hostname = "cf-origin.culilab.dev"
 
-# The state switch. Start at "none"; advance to "ip_allowlist" then "aop".
-protection = "none"
+# --- REQUIRED: SSH (the Layer 2 step SSHes into the box to enable mTLS) ---
+key_name         = "my-ec2-keypair"    # an existing EC2 key pair in this region
+ssh_ingress_cidr = "203.0.113.10/32"   # YOUR public IP as /32 (curl ifconfig.me)
 
 # --- Optional ---
-# aws_region       = "ap-southeast-1"
-# instance_type    = "t3.micro"
-# key_name         = "my-ec2-keypair"   # existing EC2 key pair, for SSH inspection
-# ssh_ingress_cidr = "203.0.113.10/32"  # YOUR IP/32; leave unset to disable SSH
+# aws_region    = "ap-southeast-1"
+# instance_type = "t3.micro"
