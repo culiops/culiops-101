@@ -21,9 +21,9 @@ output "instance_id" {
   value       = aws_instance.origin.id
 }
 
-output "ssh_command" {
-  description = "SSH into the origin for the Layer 2 (mTLS) step. Uses your key pair; replace the .pem path with your private key."
-  value       = "ssh -i ~/.ssh/${var.key_name}.pem ubuntu@${aws_eip.origin.public_ip}"
+output "ssm_command" {
+  description = "Open an admin shell on the origin for the Layer 2 (mTLS) step — over SSM Session Manager. No SSH, no key pair, no open port. Requires the session-manager-plugin on your machine."
+  value       = "aws ssm start-session --target ${aws_instance.origin.id}"
 }
 
 output "check_direct" {

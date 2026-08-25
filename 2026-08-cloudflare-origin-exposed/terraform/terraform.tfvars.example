@@ -4,14 +4,14 @@
 # by hand in the demo, so there is NO Cloudflare token or zone id here — those live in ../.env
 # and are used by the `curl` steps in the README.
 
+# This file is OPTIONAL now — every variable has a sensible default. Admin access is over SSM
+# Session Manager, so there is no key pair and no SSH-CIDR to set. Copy this only if you want to
+# override a default (e.g. a different sandbox hostname or region).
+
 # A subdomain of your THROWAWAY / sandbox Cloudflare zone. This lab intentionally exposes an
 # origin — never a production zone. Terraform uses this only for the cert CN + check commands;
 # you create the actual proxied A record by hand.
-origin_hostname = "cf-origin.culilab.dev"
-
-# --- REQUIRED: SSH (the Layer 2 step SSHes into the box to enable mTLS) ---
-key_name         = "my-ec2-keypair"    # an existing EC2 key pair in this region
-ssh_ingress_cidr = "203.0.113.10/32"   # YOUR public IP as /32 (curl ifconfig.me)
+# origin_hostname = "cf-origin.culilab.dev"
 
 # --- Optional ---
 # aws_region    = "ap-southeast-1"

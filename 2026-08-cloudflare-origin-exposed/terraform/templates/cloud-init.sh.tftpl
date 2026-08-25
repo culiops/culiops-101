@@ -3,9 +3,10 @@
 #
 # Stands up a PLAIN, exposed nginx origin — no locks. Both locks are applied by hand in the demo:
 #   Layer 1 (IP allowlist) = a security-group change, from your laptop.
-#   Layer 2 (mTLS / AOP)    = drop one snippet into /etc/nginx/mtls/ over SSH, then reload.
+#   Layer 2 (mTLS / AOP)    = drop one snippet into /etc/nginx/mtls/ over an SSM shell, then reload.
 # The 443 server block already `include`s that (initially empty) directory, so enabling Layer 2
-# on camera is one file + one reload — never an in-place edit of this config.
+# on camera is one file + one reload — never an in-place edit of this config. Admin access is AWS
+# SSM Session Manager (no SSH, no key, no open port 22).
 set -Eeuo pipefail
 export HOME=/root
 export DEBIAN_FRONTEND=noninteractive
@@ -62,5 +63,9 @@ NGINX
 nginx -t
 systemctl enable nginx
 systemctl restart nginx
+
+# 5) SSM Session Manager agent. Pre-installed on the Ubuntu 24.04 AWS AMI (snap). Nudge it to be
+#    running so the Layer 2 `aws ssm start-session` is ready quickly — non-fatal if absent.
+snap start amazon-ssm-agent 2>/dev/null || systemctl start amazon-ssm-agent 2>/dev/null || true
 
 echo "[bootstrap] done — plain exposed nginx serving at $(date -u)"

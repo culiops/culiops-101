@@ -31,28 +31,11 @@ variable "origin_hostname" {
   default     = "cf-origin.culilab.dev"
 }
 
-# ─── SSH — REQUIRED for Layer 2 ───────────────────────────────────────────────
-# Layer 2 (Authenticated Origin Pulls) is applied by SSHing into the box and adding an nginx
-# mTLS snippet on camera. Both of these must be set, or you cannot reach the box to do it.
-variable "key_name" {
-  description = "Name of an existing EC2 key pair for SSH access. REQUIRED — the Layer 2 step SSHes into the origin to enable mTLS."
-  type        = string
-
-  validation {
-    condition     = length(var.key_name) > 0
-    error_message = "key_name is required: Layer 2 SSHes into the origin. Create/import an EC2 key pair first."
-  }
-}
-
-variable "ssh_ingress_cidr" {
-  description = "CIDR allowed to SSH (port 22) into the origin. Set to YOUR public IP as /32. REQUIRED for the Layer 2 step."
-  type        = string
-
-  validation {
-    condition     = can(cidrhost(var.ssh_ingress_cidr, 0))
-    error_message = "ssh_ingress_cidr must be a valid CIDR, e.g. 203.0.113.10/32 (your public IP)."
-  }
-}
+# ─── Admin access — SSM Session Manager, NOT SSH ──────────────────────────────
+# Layer 2 (Authenticated Origin Pulls) is applied by opening a shell on the box and adding an
+# nginx mTLS snippet on camera. That shell comes from AWS Systems Manager Session Manager — no
+# SSH, no key pair, and NO inbound port 22. There is nothing to set here: the box gets an SSM
+# instance profile (see main.tf) and you reach it with `aws ssm start-session`.
 
 variable "instance_type" {
   description = "EC2 instance type for the origin. t3.micro is free-tier eligible and plenty."

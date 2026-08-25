@@ -104,20 +104,45 @@ resource "aws_vpc_security_group_ingress_rule" "http" {
   description       = "HTTP open to the world"
 }
 
-resource "aws_vpc_security_group_ingress_rule" "ssh" {
-  security_group_id = aws_security_group.origin.id
-  ip_protocol       = "tcp"
-  from_port         = 22
-  to_port           = 22
-  cidr_ipv4         = var.ssh_ingress_cidr
-  description       = "SSH from your IP - required for the Layer 2 (mTLS) step"
-}
-
 resource "aws_vpc_security_group_egress_rule" "all" {
   security_group_id = aws_security_group.origin.id
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
   description       = "All egress"
+}
+
+# ─── IAM — SSM Session Manager access (no SSH, no key pair, no inbound port 22) ─
+#
+# The origin is administered over AWS Systems Manager Session Manager, not SSH. The box carries
+# an instance profile with the SSM core permissions; in return the security group opens NO
+# inbound admin port at all — exactly the posture this video argues for. The Layer 2 shell is
+# `aws ssm start-session`, which needs no open port and no key. (Requires the AWS-managed
+# amazon-ssm-agent, pre-installed on the Ubuntu 24.04 AWS AMI.)
+
+data "aws_iam_policy_document" "ec2_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "origin" {
+  name               = "${local.name_prefix}-origin-ssm"
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume.json
+  tags               = { Name = "${local.name_prefix}-origin-ssm" }
+}
+
+resource "aws_iam_role_policy_attachment" "ssm_core" {
+  role       = aws_iam_role.origin.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "origin" {
+  name = "${local.name_prefix}-origin-ssm"
+  role = aws_iam_role.origin.name
 }
 
 # ─── Origin instance + stable public IP ───────────────────────────────────────
@@ -127,11 +152,11 @@ resource "aws_instance" "origin" {
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.origin.id]
-  key_name               = var.key_name
+  iam_instance_profile   = aws_iam_instance_profile.origin.name
 
   # Plain nginx, always. The 443 server block includes an (initially empty) mTLS snippet
-  # directory, so Layer 2 is just "drop one file + reload" over SSH — no in-place editing of
-  # the main config on camera. See templates/cloud-init.sh.tftpl.
+  # directory, so Layer 2 is just "drop one file + reload" over an SSM shell — no in-place
+  # editing of the main config on camera. See templates/cloud-init.sh.tftpl.
   user_data = templatefile("${path.module}/templates/cloud-init.sh.tftpl", {
     origin_hostname = var.origin_hostname
   })
