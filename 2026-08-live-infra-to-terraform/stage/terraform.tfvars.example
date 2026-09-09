@@ -1,0 +1,12 @@
+# terraform.tfvars.example — adopt-clickops-ec2 / stage
+#
+# Copy this file to terraform.tfvars and fill in your values:
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# The defaults below are safe to run as-is — random_id.suffix guarantees a
+# unique name per run, which matters because culiops-sandbox is a SHARED
+# account (see project-sandbox-account-is-shared).
+
+aws_region   = "ap-southeast-1"
+project_name = "culiops-lab-adopt"
+environment  = "dev"

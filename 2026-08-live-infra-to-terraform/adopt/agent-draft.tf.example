@@ -1,0 +1,91 @@
+# agent-draft.tf.example — the AI agent's first-pass config
+#
+# This is what a read-only discovery agent handed back after describing the
+# legacy EC2 instance and its security group. It got almost everything
+# right by reading the real resource's attributes — instance type, subnet,
+# security group shape. But for `ami` it "helpfully" wrote a `data.aws_ami`
+# "latest" lookup instead of the actual AMI the box boots from. That single
+# choice is the entire trap this lab exists to demonstrate: it looks modern
+# ("always stay current"), but it means the config's `ami` will drift the
+# moment a newer Ubuntu build ships — and `ami` is a force-new attribute on
+# aws_instance, so a drifted `ami` means Terraform wants to DESTROY and
+# recreate a running box.
+#
+# Usage:
+#   cp agent-draft.tf.example agent-draft.tf
+#
+# Do not "fix" the ami line before your first `terraform plan` — the whole
+# point of Step 4 in ../README.md is watching `plan` catch this on its own.
+# The fix (pin var.real_ami_id, delete the data source) is Step 5.
+
+# ─── The trap: a "latest AMI" lookup for an already-running instance ─────────
+# Ubuntu 24.04 (noble), NOT the 22.04 (jammy) the legacy box actually runs.
+# Guaranteed to differ from var.real_ami_id — no rotting hardcoded id here,
+# and no reliance on a new Ubuntu point-release shipping during a shoot.
+data "aws_ami" "ubuntu_latest" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+resource "aws_instance" "web" {
+  ami                    = data.aws_ami.ubuntu_latest.id # ← THE TRAP (fixed in Step 5: var.real_ami_id)
+  instance_type          = "t3.small"
+  subnet_id              = var.subnet_id
+  vpc_security_group_ids = [aws_security_group.web.id]
+
+  lifecycle {
+    # The agent added this out of habit ("don't let plan surprise me on tags
+    # drifting from console edits"). It does nothing to protect against the
+    # ami mismatch below — ami isn't in this ignore list, and shouldn't be.
+    ignore_changes = [tags["CreatedAt"]]
+  }
+
+  tags = {
+    Name = var.legacy_instance_name
+  }
+}
+
+# ─── The security group: this half the agent got right ──────────────────────
+# Matches the legacy SG's real shape exactly (egress all + ingress 443 from
+# 0.0.0.0/0, and the real `name` — force-new, so it must match exactly),
+# so importing it produces no diff at all — only the instance's ami
+# attribute drives the plan you're about to see.
+resource "aws_security_group" "web" {
+  name        = var.legacy_sg_name
+  description = "Security group for the legacy click-ops EC2 instance"
+  vpc_id      = data.aws_subnet.selected.vpc_id # agent resolved the VPC from the subnet it already found
+
+  ingress {
+    description = "public web listener - demo origin"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "unrestricted egress - demo box, no outbound-sensitive workload"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = var.legacy_sg_name
+  }
+}
+
+data "aws_subnet" "selected" {
+  id = var.subnet_id
+}

@@ -1,0 +1,19 @@
+# terraform.tfvars.example — adopt-clickops-ec2 / adopt
+#
+# Copy to terraform.tfvars and fill in every value from stage's outputs:
+#   cp terraform.tfvars.example terraform.tfvars
+#   cd ../stage && terraform output
+#
+# NEVER commit terraform.tfvars once it holds real ids from your own AWS
+# account — this .example file (with placeholders) is what's safe to commit.
+
+aws_region   = "ap-southeast-1"
+project_name = "culiops-lab-adopt" # must match stage's project_name
+environment  = "dev"               # must match stage's environment
+
+subnet_id          = "subnet-REPLACE_ME"
+legacy_instance_id = "i-REPLACE_ME"
+legacy_sg_id       = "sg-REPLACE_ME"
+legacy_sg_name     = "REPLACE_ME" # stage output: legacy_sg_name — required so the SG imports with no diff
+legacy_instance_name = "REPLACE_ME" # stage output: legacy_instance_name
+real_ami_id        = "ami-REPLACE_ME"

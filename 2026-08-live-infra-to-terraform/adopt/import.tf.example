@@ -1,0 +1,27 @@
+# import.tf.example — bind the real, already-existing resources to state
+#
+# Native `import {}` blocks (Terraform 1.5+) — the point of this lab is
+# using THIS, not a hand-rolled `terraform import <addr> <id>` CLI dance and
+# not `-generate-config-out` (which would auto-write correct config from the
+# real resource and leave nothing for `plan` to catch — see agent-draft's
+# header comment for why the agent, not `-generate-config-out`, authors the
+# config here).
+#
+# Usage:
+#   cp import.tf.example import.tf
+#
+# `terraform plan` (and `apply`) read these blocks and match each `to`
+# address against the resource identified by `id`, then diff the address's
+# existing config against reality. Import blocks are declarative and
+# idempotent — safe to leave in place after the resources are adopted;
+# `terraform plan` simply no-ops on them once state already matches.
+
+import {
+  to = aws_instance.web
+  id = var.legacy_instance_id
+}
+
+import {
+  to = aws_security_group.web
+  id = var.legacy_sg_id
+}

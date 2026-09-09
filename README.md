@@ -13,6 +13,7 @@ own folder, named by release month and topic — clone it, run it, break it, lea
 | [`2026-07-secure-ai-agents`](2026-07-secure-ai-agents) | Three guardrails to turn on before an AI coding agent runs commands on your machine — no cloud account needed | CuliOps on YouTube |
 | [`2026-08-cicd-laravel-vps`](2026-08-cicd-laravel-vps) | Deploy Laravel with Docker to a VPS via GitHub Actions + GHCR — and the four ways `compose up` succeeds while the app is broken | CuliOps on YouTube |
 | [`2026-08-cloudflare-origin-exposed`](2026-08-cloudflare-origin-exposed) | You enabled Cloudflare but your origin still answers direct-to-IP requests — check it in 30s, then lock it with an IP allowlist and Authenticated Origin Pulls (mTLS) | CuliOps on YouTube |
+| [`2026-08-live-infra-to-terraform`](2026-08-live-infra-to-terraform) | Adopt a click-ops EC2 + Security Group into Terraform — let a read-only AI agent draft the config, then let `terraform plan` catch the "latest AMI" trap before it destroys a running instance | CuliOps on YouTube |
 
 ## Usage
 
