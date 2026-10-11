@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars ONLY if you want to override a default. NEVER commit terraform.tfvars.
+#
+# The Cloudflare zone id normally comes from the environment, not from this file:
+#   source ../.env     # exports TF_VAR_cloudflare_zone_id (= CLOUDFLARE_ZONE_ID) and CLOUDFLARE_API_TOKEN
+# so you do not need a tfvars file at all for the default lab.
+
+# A THROWAWAY / sandbox zone. This lab changes zone-wide SSL settings - never a production zone.
+# lab_zone_name   = "culilab.dev"
+
+# A subdomain of lab_zone_name. Terraform creates its proxied DNS record.
+# origin_hostname = "app.culilab.dev"
+
+# --- Optional ---
+# aws_region    = "ap-southeast-1"
+# instance_type = "t3.micro"

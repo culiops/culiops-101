@@ -1,0 +1,21 @@
+# Secrets & local config
+.env
+terraform/terraform.tfvars
+
+# The zone's ORIGINAL SSL settings, saved by scripts/prepare-zone.sh for cleanup.sh. Local only.
+.zone-ssl-before.env
+
+# Cloudflare Origin CA material you download/paste during the lab - NEVER commit a private key
+*.pem
+*.key
+*.csr
+
+# Terraform state & working files (NOT .terraform.lock.hcl - that one IS committed)
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfplan
+terraform/crash.log
+
+# local test-run logs
+test-logs/

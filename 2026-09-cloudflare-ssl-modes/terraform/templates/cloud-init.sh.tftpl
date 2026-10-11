@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# cloud-init bootstrap - Cloudflare SSL Modes lab (rendered by Terraform).
+#
+# Builds an origin that is WRONG ON PURPOSE:
+#   * port 80  -> 301 to https://$host$request_uri   (the "force HTTPS" rule almost every app has)
+#   * port 443 -> serves a SELF-SIGNED certificate
+#
+# The self-signed pair is written to /etc/nginx/certs/origin-ca.pem / origin-ca.key - the SAME
+# paths the video's slide shows in the final nginx config. So the fix on camera is literally
+# "overwrite these two files with the Cloudflare Origin CA pair, then reload nginx": no config
+# edit, no new paths. Admin access is AWS SSM Session Manager (no SSH, no key, no port 22).
+set -Eeuo pipefail
+export HOME=/root
+export DEBIAN_FRONTEND=noninteractive
+
+LOG=/var/log/lab-bootstrap.log
+exec > >(tee -a "$LOG") 2>&1
+trap 'echo "[bootstrap] FAILED at line $LINENO - see $LOG"; exit 1' ERR
+
+echo "[bootstrap] host=${origin_hostname} start=$(date -u)"
+
+# 0) Access FIRST. If a later package step fails, the box must still be reachable over SSM and
+#    debuggable. The agent ships pre-installed (snap) on the Ubuntu 24.04 AWS AMI; non-fatal if absent.
+snap start amazon-ssm-agent 2>/dev/null || systemctl start amazon-ssm-agent 2>/dev/null || true
+
+# 1) Packages. Stock Ubuntu 24.04 LTS nginx - deliberately NOT a third-party nginx.org repo.
+apt-get update -y
+apt-get install -y nginx openssl curl ca-certificates
+
+# 2) Self-signed certificate, at the FINAL paths. 30 days; SAN included (modern clients ignore CN).
+#    Cloudflare "Full" accepts this unchecked; "Full (strict)" rejects it with a 526 - that is the demo.
+install -d -m 0755 /etc/nginx/certs
+if [ ! -f /etc/nginx/certs/origin-ca.pem ]; then
+  openssl req -x509 -nodes -newkey rsa:2048 -days 30 \
+    -keyout /etc/nginx/certs/origin-ca.key \
+    -out /etc/nginx/certs/origin-ca.pem \
+    -subj "/CN=${origin_hostname}" \
+    -addext "subjectAltName=DNS:${origin_hostname}"
+fi
+chown root:root /etc/nginx/certs/origin-ca.pem /etc/nginx/certs/origin-ca.key
+chmod 0644 /etc/nginx/certs/origin-ca.pem
+chmod 0600 /etc/nginx/certs/origin-ca.key
+
+# 3) nginx. Port 80 force-redirects to HTTPS (the loop trigger under Flexible); 443 is the TLS
+#    server block exactly as the slide shows it.
+cat > /etc/nginx/sites-available/default <<'NGINX'
+server {
+    listen 80 default_server;
+    server_name _;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name ${origin_hostname};
+    ssl_certificate     /etc/nginx/certs/origin-ca.pem;
+    ssl_certificate_key /etc/nginx/certs/origin-ca.key;
+
+    location / { default_type text/plain; return 200 "origin reached over https\n"; }
+}
+NGINX
+
+# 4) Validate before restart so a bad config never silently takes nginx down.
+nginx -t
+systemctl enable nginx
+systemctl restart nginx
+
+echo "[bootstrap] done - force-HTTPS nginx with a self-signed cert at $(date -u)"
